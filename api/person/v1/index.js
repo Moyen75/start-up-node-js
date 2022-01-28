@@ -2,7 +2,6 @@ const router = require("express").Router();
 const root = require("app-root-path");
 
 const authRoute = require(`${root}/middleware/authenticate`)
-// const authRoute = require('/home/moyen/my-node-js-start-up/middleware/authenticate')
 
 // console.log('This is root', root)
 
