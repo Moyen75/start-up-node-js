@@ -40,6 +40,8 @@ build/Release
 
 tmp/
 
+firebase-sdk-admin.json
+
 # Dependency directories
 node_modules/
 jspm_packages/
