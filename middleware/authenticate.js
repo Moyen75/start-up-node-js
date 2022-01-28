@@ -3,7 +3,7 @@ const root = require("app-root-path");
 // const config = require(`${root}/config`);
 var admin = require("firebase-admin");
 
-var serviceAccount = require(`${root}/firebase-sdk-admin.json`);
+// var serviceAccount = require(`${root}/firebase-sdk-admin.json`);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
