@@ -1,6 +1,11 @@
 const router = require("express").Router();
 const root = require("app-root-path");
 
+const authRoute = require(`${root}/middleware/authenticate`)
+// const authRoute = require('/home/moyen/my-node-js-start-up/middleware/authenticate')
+
+// console.log('This is root', root)
+
 const mongo = require(`${root}/services/mongo-crud`);
 getPersonData = async (req, res, next) => {
   try {
@@ -49,7 +54,7 @@ updatePersonData = async (req, res, next) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-router.get("/person", getPersonData);
+router.get("/person", authRoute, getPersonData);
 router.put("/person/:username", updatePersonData);
 
 router.post("/person", setPersonData);
