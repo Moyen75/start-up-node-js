@@ -40,7 +40,7 @@ build/Release
 
 tmp/
 
-firebase-sdk-admin.json
+firebase-adminsdk.json
 
 # Dependency directories
 node_modules/

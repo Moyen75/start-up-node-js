@@ -33,6 +33,16 @@ setPersonData = async (req, res, next) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+upsertPersonData = async (req, res, next) => {
+  try {
+    const person = await mongo.updateOne('person', req.query.email, req.body)
+    return res.status(200).json({ success: true, person });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
 updatePersonData = async (req, res, next) => {
   try {
     const person = await mongo.updateData(
@@ -56,6 +66,7 @@ updatePersonData = async (req, res, next) => {
 router.get("/person", authRoute, getPersonData);
 router.put("/person/:username", updatePersonData);
 
+router.put("/person", upsertPersonData);
 router.post("/person", setPersonData);
 
 module.exports = router;
