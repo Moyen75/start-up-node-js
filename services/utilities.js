@@ -17,7 +17,7 @@ module.exports = {
     var result = {};
     for (var i in data) {
       var keys = i.split(".");
-      keys.reduce(function(r, e, j) {
+      keys.reduce(function (r, e, j) {
         return (
           r[e] ||
           (r[e] = isNaN(Number(keys[j + 1]))
@@ -68,5 +68,12 @@ module.exports = {
       }
       return r;
     }, {});
+  },
+  populateId() {
+    return 'xxxxx-xxxx-4xxx-yxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0
+      const v = c === 'x' ? r : (r & 0x3) | 0x8
+      return v.toString(16)
+    })
   }
 };

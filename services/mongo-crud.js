@@ -1,46 +1,30 @@
-const { MongoClient } = require("mongodb");
-const { generateMongoDbUri } = require("./mongo-uri");
-
-const mongoDbUri = generateMongoDbUri();
-const mongoOptions = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-};
-
+const root = require("app-root-path");
+const { populateId } = require(`${root}/services/utilities`);
 module.exports = {
-  async documentCount(collection, query = {}) {
+  async documentCount(db, collection, query = {}) {
     const options = {};
-    const client = new MongoClient(mongoDbUri, mongoOptions);
     try {
-      await client.connect();
-      const count = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const count = await db.collection(collection)
         .countDocuments(query, options);
       return count;
     } catch (e) {
       console.error(e);
       return "error";
-    } finally {
-      await client.close();
     }
   },
   async fetchMany(
+    db,
     collection,
     query = {},
-    keys = {},
+    key = {},
     sorting = {},
     limit = 0,
     pageNumber = 0
   ) {
     // Note limit = 0 is the equivalent of setting no limit
-
-    const client = new MongoClient(mongoDbUri, mongoOptions);
     try {
-      await client.connect();
-      const list = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const keys = { ...key, _id: 0 }
+      const list = await db.collection(collection)
         .find(query)
         .skip(pageNumber > 0 ? (pageNumber - 1) * limit : 0)
         .limit(limit)
@@ -51,17 +35,32 @@ module.exports = {
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async fetchOne(collection, query = {}, keys = {}, sorting = {}) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async fetchWithoutpagination(
+    db,
+    collection,
+    query = {},
+    key = {},
+    sorting = {},
+  ) {
     try {
-      await client.connect();
-      const list = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const keys = { ...key, _id: 0 }
+      const list = await db.collection(collection)
+        .find(query)
+        .sort(sorting)
+        .project(keys)
+        .toArray();
+      return list;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+  async fetchOne(db, collection, query = {}, key = {}, sorting = {}) {
+    try {
+      const keys = { ...key, _id: 0 }
+      const list = await db.collection(collection)
         .find(query)
         .sort(sorting)
         .limit(1)
@@ -71,33 +70,39 @@ module.exports = {
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async fetchUniqueValues(collection, field, query) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async fetchWithAggregation(db, collection, query = {}, key = {}, sorting = {},
+    limit = 10,
+    pageNumber = 0) {
     try {
-      await client.connect();
-      const vals = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const keys = { ...key, _id: 0 }
+      const list = await db.collection(collection)
+        .aggregate(query)
+        .skip(pageNumber > 0 ? (pageNumber - 1) * limit : 0)
+        .sort(sorting)
+        .limit(limit)
+        .project(keys)
+        .toArray();
+      return list;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+  async fetchUniqueValues(db, collection, field, query) {
+    try {
+      const vals = await db.collection(collection)
         .distinct(field, query);
       return vals || [];
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async isDataExist(collection, query) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async isDataExist(db, collection, query) {
     try {
-      await client.connect();
-      let result = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      let result = await db.collection(collection)
         .find(query)
         .toArray();
 
@@ -105,129 +110,171 @@ module.exports = {
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async insertOne(collection, payload) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async insertSerial(db, collection, payload) {
     try {
-      await client.connect();
-      const response = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const { orgId } = payload
+      let query = {};
+      const start = new Date().setHours(0, 0, 0, 0)
+      const end = new Date().setHours(23, 59, 59, 999)
+      if (orgId) query = { orgId, createdAt: { $gte: start, $lt: end }, "doctor.uid": payload.doctor};
+      const document = await db.collection(collection).find(query).toArray()
+      let serial = 1;
+      if (document.length > 0) serial = document[document.length - 1].serial + 1
+      payload.serial = serial
+      payload.uid = populateId();
+      payload.createdAt = Date.now();
+      const response = await db.collection(collection)
         .insertOne(payload);
       return response.ops[0];
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async updateOne(collection, query, payload) {
+  async insertOne(db, collection, payload) {
+    try {
+      const { orgId } = payload
+      let query = {};
+      if (orgId) query = { orgId };
+      const document = await db.collection(collection).find(query).toArray()
+      let serial = 1;
+      if (document.length > 0) serial = document[document.length - 1].serial + 1
+      payload.serial = serial
+      payload.uid = populateId();
+      payload.createdAt = Date.now();
+      const response = await db.collection(collection)
+        .insertOne(payload);
+      return response.ops[0];
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+  async seeder(db, collection, payload) {
+    try {
+      payload.createdAt = Date.now();
+      const response = await db.collection(collection)
+        .insertOne(payload);
+      return response.ops[0];
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+  async insertOrg(db, collection, payload) {
+    try {
+      payload.createdAt = Date.now();
+      const response = await db.collection(collection)
+        .insertOne(payload);
+      return response.ops[0];
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+  async updateOne(db, collection, query, payload) {
     // this option instructs the method to create a document if no documents match the filter
     const options = { upsert: true };
+    payload.updatedAt = Date.now();
+    delete payload._id;
     const updateDoc = {
       $set: payload,
     };
-    const client = new MongoClient(mongoDbUri, mongoOptions);
     try {
-      await client.connect();
-      await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      await db.collection(collection)
         .updateOne(query, updateDoc, options);
       return true;
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async updateOneArray(collection, query, payload) {
+  async updateOneArray(db, collection, query, payload) {
     const options = {};
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+    payload.updatedAt = Date.now();
     try {
-      await client.connect();
-      await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      await db.collection(collection)
         .updateOne(query, { $push: payload }, options);
       return true;
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async insertMany(collection, payload) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async insertMany(db, collection, payload) {
     try {
-      await client.connect();
-      const response = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      const response = await db.collection(collection)
         .insertMany(payload);
       return response.ops;
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async updateData(collection, query, newValue) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async updateData(db, collection, query, newValue) {
+    delete newValue._id;
+    newValue.updatedAt = Date.now();
     try {
-      await client.connect();
-      let result = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      let result = await db.collection(collection)
         .updateOne(query, newValue);
       return !!result.result.n; // for returning boolean value of if updated or not
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async deleteData(collection, query) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async deleteData(db, collection, query) {
     try {
-      await client.connect();
-      let result = await client
-        .db(process.env.MONGO_DB)
-        .collection(collection)
+      let result = await db.collection(collection)
         .findOneAndDelete(query);
 
       return !!result.lastErrorObject.n; // for returning boolean value of if deleted or not
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
-  async documentExists(collection, query) {
-    const client = new MongoClient(mongoDbUri, mongoOptions);
+  async transaction(operations, client) {
+    const session = client.startSession();
+    const transactionOptions = {
+      readPreference: 'primary',
+      readConcern: { level: 'local' },
+      writeConcern: { w: 'majority' }
+    };
+    // console.log(operations, session)
     try {
-      await client.connect();
+      let result = [];
+      await session.withTransaction(async () => {
+        for (let { operation, operationParameter } of operations) {
+          const operationResult = await operation(...operationParameter, { session })
+          if (!operationResult) {
+            await session.abortTransaction();
+            throw new Error("Something wrong!")
+          }
+          result=result.concat(operationResult)
+        };
+      }, transactionOptions);
+      return result;
+    } catch (e) {
+      console.error(e);
+      return false;
+    } finally {
+      await session.endSession();
+    }
+  },
+  async documentExists(db, collection, query) {
+    try {
       let result =
-        (await client
-          .db(process.env.MONGO_DB)
-          .collection(collection)
+        (await db.collection(collection)
           .find(query)
           .count()) > 0;
       return result;
     } catch (e) {
       console.error(e);
       return false;
-    } finally {
-      await client.close();
     }
   },
 };

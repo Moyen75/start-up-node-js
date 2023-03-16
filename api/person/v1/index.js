@@ -1,72 +1,150 @@
 const router = require("express").Router();
 const root = require("app-root-path");
-
-const authRoute = require(`${root}/middleware/authenticate`)
-
-// console.log('This is root', root)
-
+const { updateOne } = require(`${root}/services/mongo-transactions`);
 const mongo = require(`${root}/services/mongo-crud`);
-getPersonData = async (req, res, next) => {
-  try {
-    const username = req.query.username;
-    const email = req.query.email;
-    const userId = req.query.user_id;
-    const query = {};
-    if (username) query.username = username;
-    if (email) query.email = email;
-    if (userId) query.userId = userId;
+const mongoConnect = require(`${root}/services/mongo-connect`);
+const { staffs } = require(`${root}/services/populateQuery`);
 
-    const person = await mongo.fetchOne("person", query);
-    return res.status(200).json({ success: true, person });
+// const authRoute = require(`${root}/middleware/authenticate`);
+// const authorize = require(`${root}/middleware/authorize`);
+
+getPersonData = async (req, res) => {
+  const client = await mongoConnect();
+  try {
+    const staffsLookUp = staffs();
+    const query = [
+      {
+        $match: {
+          ...req.query,
+        },
+      },
+      {
+        $lookup: {
+          from: "staffs",
+          localField: "uid",
+          foreignField: "uid",
+          as: "staff",
+        },
+      },
+    ];
+    const db = client.db("apolloHMS");
+
+    const person = await mongo.fetchWithAggregation(
+      db,
+      "person",
+      query,
+      {},
+      {
+        createdAt: -1,
+      }
+    );
+    res.status(200).json({ success: !!person, person: person[0] });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  } finally {
+    await client.close();
   }
 };
 
 setPersonData = async (req, res, next) => {
+  const client = await mongoConnect();
   try {
-    const person = await mongo.insertOne("person", req.body);
-    return res.status(200).json({ success: true, person });
+    const db = client.db("apolloHMS");
+    const person = await mongo.insertOne(db, "person", req.body);
+    res.status(200).json({
+      success: !!person,
+      person,
+    });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  } finally {
+    await client.close();
   }
 };
-upsertPersonData = async (req, res, next) => {
-  try {
-    const person = await mongo.updateOne('person', req.query.email, req.body)
-    return res.status(200).json({ success: true, person });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
-}
-
 updatePersonData = async (req, res, next) => {
+  const client = await mongoConnect();
   try {
-    const person = await mongo.updateData(
+    const db = client.db("apolloHMS");
+    const payload = req.body;
+    const person = await mongo.updateOne(
+      db,
       "person",
       {
-        username: req.params.username,
+        uid: req.params.uid,
       },
-      {
-        $set: {
-          ...req.body,
-          ...{ updated_at: Date.now() },
-        },
-      }
+      payload
     );
-    return res.status(200).json({ success: true, person });
+    res.status(200).json({
+      success: !!person,
+      person,
+    });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  } finally {
+    await client.close();
   }
 };
-router.get("/person", authRoute, getPersonData);
-router.put("/person/:username", updatePersonData);
+updateMemberData = async (req, res, next) => {
+  const client = await mongoConnect();
+  try {
+    const { uid } = req.params;
+    const db = client.db("apolloHMS");
+    const { member, staff } = req.body;
+    const operations = [
+      {
+        operation: updateOne,
+        operationParameter: [
+          db,
+          "person",
+          {
+            uid,
+          },
+          member,
+        ],
+      },
+      {
+        operation: updateOne,
+        operationParameter: [
+          db,
+          "staffs",
+          {
+            uid,
+          },
+          staff,
+        ],
+      },
+    ];
+    const person = await mongo.transaction(operations, client);
+    res.status(200).json({
+      success: !!person,
+      person,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  } finally {
+    await client.close();
+  }
+};
+router.get("/person", getPersonData);
+router.put("/person/:uid", updatePersonData);
+router.put("/person/org/member/:orgId/:uid", updateMemberData);
 
-router.put("/person", upsertPersonData);
 router.post("/person", setPersonData);
 
 module.exports = router;

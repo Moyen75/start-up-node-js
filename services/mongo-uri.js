@@ -1,3 +1,7 @@
+if (process.argv[2] === "-i") {
+  const dotenv = require("dotenv");
+  dotenv.config();
+}
 const ssl_setting = process.env.NODE_ENV === "development" ? false : true;
 const args = `?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=${ssl_setting}`;
 module.exports = {

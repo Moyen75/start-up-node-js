@@ -1,43 +1,34 @@
-const jwt = require("jsonwebtoken");
-const root = require("app-root-path");
-// const config = require(`${root}/config`);
 var admin = require("firebase-admin");
-
-
-
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
   credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID, // I get no error here
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL, // I get no error here
-    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') // NOW THIS WORKS!!!
-  })
-})
+    projectId: serviceAccount.project_id,
+    clientEmail: serviceAccount.client_email,
+    privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
+  }),
+});
 
 const authRoute = async (req, res, next) => {
   if (req.headers?.authorization) {
-    const token = req.headers.authorization.split(" ")[1];
-
-    // verify user token
-    const decodedUser = await admin.auth().verifyIdToken(token)
-    console.log(decodedUser)
-    if (!decodedUser.email) {
-      return res.status(403).json({ error: "Not authorized " });
-    }
     try {
-      // req.fb_user_id = decodedUser.uid;
-      // req.auth_user_id = req.session.current_user_id;
-      // req.auth_org_id = req.session.current_org_id;
-      // req.auth_role = req.session.current_user_role;
-      // req.auth_session_id = req.session.current_session_id;
+      const token = req.headers.authorization.split(" ")[1];
+      // verify user token
+      const decodedUser = await admin.auth().verifyIdToken(token);
+      const email = decodedUser.email
+      if (!email) {
+        throw new Error("No email found in decoded user");
+      } if (!userId) {
+        throw new Error("No userId found in decoded user");
+      }
+      req.headers.user = {
+        email
+      }
       next();
     } catch (err) {
-      console.log(err);
-      return res.status(403).send("Unauthorized");
+      return res.status(403).send({ error: "Not Authorized", message: err.message });
     }
   } else {
-    return res.status(403).send("Unauthorized");
+    return res.status(401).send({ error: "Not Authorized", message: "No auth header found" });
   }
-}
-
-
+};
 module.exports = authRoute;
